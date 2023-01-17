@@ -12,8 +12,8 @@ import android.util.Log
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
-import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.coroutines.*
 import twitter4j.Twitter
 import twitter4j.TwitterFactory
@@ -50,7 +50,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        twitter_login_btn.setOnClickListener {
+        val twitterLoginBtn = findViewById<Button>(R.id.twitter_login_btn)
+        twitterLoginBtn.setOnClickListener {
             getRequestToken()
         }
 
