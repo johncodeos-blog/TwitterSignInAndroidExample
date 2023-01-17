@@ -1,12 +1,9 @@
 package com.example.twittersigninexample
 
-import android.annotation.SuppressLint
-import android.annotation.TargetApi
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.webkit.WebResourceRequest
@@ -14,6 +11,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.*
 import twitter4j.Twitter
 import twitter4j.TwitterFactory
@@ -38,9 +36,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        GlobalScope.launch {
-            val results = GlobalScope.async { isLoggedIn() }
-            val result = results.await()
+        lifecycleScope.launch {
+            val result = isLoggedIn()
             if (result) {
                 // Show the Activity with the logged in user
                 Log.d("LoggedIn?: ", "YES")
@@ -58,7 +55,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getRequestToken() {
-        GlobalScope.launch(Dispatchers.Default) {
+        lifecycleScope.launch(Dispatchers.Default) {
             val builder = ConfigurationBuilder()
                 .setDebugEnabled(true)
                 .setOAuthConsumerKey(TwitterConstants.CONSUMER_KEY)
@@ -70,7 +67,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 val requestToken = twitter.oAuthRequestToken
                 withContext(Dispatchers.Main) {
-                    setupTwitterWebviewDialog(requestToken.authorizationURL)
+                    setupTwitterWebViewDialog(requestToken.authorizationURL)
                 }
             } catch (e: IllegalStateException) {
                 Log.e("ERROR: ", e.toString())
@@ -79,51 +76,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     // Show twitter login page in a dialog
-    @SuppressLint("SetJavaScriptEnabled")
-    fun setupTwitterWebviewDialog(url: String) {
-        twitterDialog = Dialog(this)
-        val webView = WebView(this)
-        webView.isVerticalScrollBarEnabled = false
-        webView.isHorizontalScrollBarEnabled = false
-        webView.webViewClient = TwitterWebViewClient()
-        webView.settings.javaScriptEnabled = true
-        webView.loadUrl(url)
-        twitterDialog.setContentView(webView)
-        twitterDialog.show()
+    private fun setupTwitterWebViewDialog(url: String) {
+        val webView = WebView(this).apply {
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            webViewClient = TwitterWebViewClient()
+            loadUrl(url)
+        }
+        twitterDialog = Dialog(this).apply {
+            setContentView(webView)
+            show()
+        }
     }
 
-    // A client to know about WebView navigations
-    // For API 21 and above
+    // A client to know about WebView navigation
     @Suppress("OverridingDeprecatedMember")
     inner class TwitterWebViewClient : WebViewClient() {
-        @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-        override fun shouldOverrideUrlLoading(
-            view: WebView?,
-            request: WebResourceRequest?
-        ): Boolean {
-            if (request?.url.toString().startsWith(TwitterConstants.CALLBACK_URL)) {
-                Log.d("Authorization URL: ", request?.url.toString())
-                handleUrl(request?.url.toString())
-
-                // Close the dialog after getting the oauth_verifier
-                if (request?.url.toString().contains(TwitterConstants.CALLBACK_URL)) {
-                    twitterDialog.dismiss()
-                }
-                return true
-            }
-            return false
-        }
-
-        // For API 19 and below
-        override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-            if (url.startsWith(TwitterConstants.CALLBACK_URL)) {
-                Log.d("Authorization URL: ", url)
-                handleUrl(url)
-
-                // Close the dialog after getting the oauth_verifier
-                if (url.contains(TwitterConstants.CALLBACK_URL)) {
-                    twitterDialog.dismiss()
-                }
+        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            if (request.url.toString().startsWith(TwitterConstants.CALLBACK_URL)) {
+                handleUrl(request.url.toString())
+                twitterDialog.dismiss()
                 return true
             }
             return false
@@ -133,10 +105,11 @@ class MainActivity : AppCompatActivity() {
         private fun handleUrl(url: String) {
             val uri = Uri.parse(url)
             val oauthVerifier = uri.getQueryParameter("oauth_verifier") ?: ""
-            GlobalScope.launch(Dispatchers.Main) {
+            lifecycleScope.launch(Dispatchers.Main) {
                 accToken =
                     withContext(Dispatchers.IO) { twitter.getOAuthAccessToken(oauthVerifier) }
                 getUserProfile()
+                twitterDialog.dismiss()
             }
         }
     }
@@ -190,13 +163,13 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-    suspend fun isLoggedIn(): Boolean {
+    private suspend fun isLoggedIn(): Boolean {
         val sharedPref = this.getPreferences(Context.MODE_PRIVATE)
         val accessToken = sharedPref.getString("oauth_token", "")
         val accessTokenSecret = sharedPref.getString("oauth_token_secret", "")
 
         val builder = ConfigurationBuilder()
-        builder.setOAuthConsumerKey(TwitterConstants.CONSUMER_KEY)
+            .setOAuthConsumerKey(TwitterConstants.CONSUMER_KEY)
             .setOAuthConsumerSecret(TwitterConstants.CONSUMER_SECRET)
             .setOAuthAccessToken(accessToken)
             .setOAuthAccessTokenSecret(accessTokenSecret)
